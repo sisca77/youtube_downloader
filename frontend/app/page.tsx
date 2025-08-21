@@ -80,7 +80,7 @@ export default function Home() {
     setIsYouTubeProcessing(true);
     setError(null);
 
-      try {
+    try {
       const response = await youtubeApi.processYouTubeUrl(youtubeUrl, summaryRatio, downloadVideo);
       setTaskId(response.task_id);
       setIsYouTubeTask(true);

@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# youtube_downloader
-=======
-<<<<<<< HEAD
 # 영상 요약 서비스
 
 OpenAI Whisper와 GPT-4를 활용하여 영상 파일의 내용을 자동으로 요약하는 웹 애플리케이션입니다.
@@ -201,7 +197,3 @@ FFmpeg가 없는 경우:
 ## 라이선스
 
 MIT License
-=======
-# video_summary_app
->>>>>>> d1fdd68c234eb635063028a09f03ed9eb7f930b1
->>>>>>> 5ac0b10 (initial commit)
