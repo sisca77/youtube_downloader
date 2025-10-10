@@ -1,199 +1,245 @@
 # 영상 요약 서비스
 
-OpenAI Whisper와 GPT-4를 활용하여 영상 파일의 내용을 자동으로 요약하는 웹 애플리케이션입니다.
+OpenAI Whisper를 활용한 YouTube 영상 및 비디오 파일 요약 서비스입니다. 사용자 인증, 관리자 기능, 작업 히스토리 등의 기능을 포함합니다.
 
 ## 주요 기능
 
-- 🎥 영상/음성 파일 업로드 (MP4, MP3, WAV, M4A, WebM 지원)
-- 🎙️ OpenAI Whisper를 통한 음성-텍스트 변환
-- 📝 GPT-4를 활용한 한국어 아웃라인 자동 생성
-- 💡 AI가 작성한 상세 해설 문서 자동 생성
-- 📊 실시간 처리 진행 상황 표시
-- 📑 탭 형식의 결과 표시 (원본, 요약, AI 해설)
-- 🔄 대용량 파일 자동 분할 처리 (25MB 이상)
-- 📏 요약 비율 선택 가능 (30%, 50%, 70%)
-- ⬇️ 스크립트 원본, 요약, AI 해설 다운로드 기능
+- **비디오 파일 업로드**: MP4, MP3, WAV, M4A, WebM 파일 지원
+- **YouTube URL 처리**: 자막 추출 또는 오디오 다운로드 후 처리
+- **AI 기반 요약**: OpenAI Whisper (음성→텍스트) + GPT-4 (요약 생성)
+- **사용자 인증**: Supabase 기반 회원가입/로그인
+- **작업 히스토리**: 사용자별 처리 이력 관리
+- **관리자 기능**: 사용자 관리 및 작업 모니터링
+- **반응형 UI**: TailwindCSS 기반 모던 인터페이스
+- **실시간 처리**: 처리 진행 상황 실시간 표시
+- **대용량 파일**: 자동 분할 처리 (25MB 이상)
+- **요약 비율**: 30%, 50%, 70% 선택 가능
 
 ## 기술 스택
 
-### Backend
-- FastAPI
-- OpenAI API (Whisper, GPT-4)
-- LangChain & LangGraph
-- Python 3.8+
-
 ### Frontend
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- React Dropzone
+- **Next.js 15** (React 19)
+- **TypeScript**
+- **TailwindCSS 4**
+- **Supabase Client**
+- **Axios** (API 통신)
+- **Lucide React** (아이콘)
 
-## 설치 및 실행
+### Backend
+- **FastAPI** (Python)
+- **OpenAI API** (Whisper, GPT-4)
+- **yt-dlp** (YouTube 다운로드)
+- **ffmpeg** (오디오 처리)
+- **youtube-transcript-api** (자막 추출)
 
-### 필수 요구사항
-- Python 3.8 이상
-- Node.js 18 이상
-- OpenAI API 키
-- FFmpeg (대용량 파일 처리 시 필요)
+### Database
+- **Supabase** (PostgreSQL + 인증)
 
-### 0. FFmpeg 설치 (선택사항, 대용량 파일 처리 시 필요)
+## 설치 및 설정
+
+### 1. 저장소 클론
+```bash
+git clone <repository-url>
+cd youtube_downloader
+```
+
+### 2. Supabase 프로젝트 설정
+
+1. [Supabase](https://supabase.com)에서 새 프로젝트 생성
+2. 데이터베이스 스키마 적용:
+   ```sql
+   -- database/supabase_schema.sql 파일의 내용을 Supabase SQL 에디터에서 실행
+   ```
+
+### 3. 환경 변수 설정
+
+#### Frontend (.env.local)
+```bash
+cd frontend
+cp .env.local.example .env.local
+```
+
+`.env.local` 파일 편집:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+#### Backend (.env)
+```bash
+cd backend
+# .env 파일 생성
+```
+
+`.env` 파일 내용:
+```env
+OPENAI_API_KEY=your_openai_api_key
+```
+
+### 4. 의존성 설치
+
+#### Frontend
+```bash
+cd frontend
+npm install
+```
+
+#### Backend
+```bash
+cd backend
+# 가상환경 생성 (권장)
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 의존성 설치
+pip install fastapi uvicorn openai yt-dlp youtube-transcript-api aiofiles python-dotenv
+```
+
+### 5. ffmpeg 설치
 
 #### Windows
-1. https://ffmpeg.org/download.html 에서 Windows 빌드 다운로드
-2. 압축 해제 후 C:\ffmpeg 에 설치
-3. 시스템 환경 변수 PATH에 C:\ffmpeg\bin 추가
+1. [FFmpeg 다운로드](https://ffmpeg.org/download.html)
+2. PATH에 추가하거나 `C:\ffmpeg\bin\` 경로에 설치
 
 #### macOS
 ```bash
 brew install ffmpeg
 ```
 
-#### Linux
+#### Ubuntu/Debian
 ```bash
 sudo apt update
 sudo apt install ffmpeg
 ```
 
-### 1. 저장소 클론
-```bash
-git clone <repository-url>
-cd video-summary-app
-```
+## 실행
 
-### 2. Backend 설정
+### 개발 환경
 
-1. 백엔드 디렉토리로 이동:
+1. **Backend 서버 실행**:
 ```bash
 cd backend
-```
-
-2. 가상환경 생성 및 활성화:
-```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
-
-# macOS/Linux
-python -m venv venv
-source venv/bin/activate
-```
-
-3. 의존성 설치:
-```bash
-pip install -r requirements.txt
-```
-
-4. 환경 변수 설정:
-`.env` 파일을 생성하고 다음 내용을 추가:
-```
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-5. 서버 실행:
-```bash
 python main.py
+# 또는
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-백엔드 서버가 http://localhost:8000 에서 실행됩니다.
-
-### 3. Frontend 설정
-
-1. 새 터미널을 열고 프론트엔드 디렉토리로 이동:
+2. **Frontend 서버 실행**:
 ```bash
 cd frontend
-```
-
-2. 의존성 설치:
-```bash
-npm install
-```
-
-3. 환경 변수 설정:
-`.env.local` 파일을 생성하고 다음 내용을 추가:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-4. 개발 서버 실행:
-```bash
 npm run dev
 ```
 
-프론트엔드가 http://localhost:3000 에서 실행됩니다.
+3. 브라우저에서 `http://localhost:3000` 접속
 
-## 사용 방법
+### 프로덕션 환경
 
-1. 웹 브라우저에서 http://localhost:3000 접속
-2. 영상 또는 음성 파일을 드래그 앤 드롭하거나 클릭하여 선택
-3. 요약 비율 선택 (30%, 50%, 70%)
-   - 30%: 핵심만 간략히
-   - 50%: 균형잡힌 요약
-   - 70%: 상세한 요약
-4. "영상 분석 시작" 버튼 클릭
-5. 처리 진행 상황을 실시간으로 확인
-6. 완료되면 탭을 통해 다음 결과 확인:
-   - 원본 스크립트: 전체 음성 텍스트
-   - 요약 아웃라인: 구조화된 요약
-   - AI 해설: 이해하기 쉬운 상세 설명 문서
-7. 필요시 스크립트 원본, 요약, AI 해설 다운로드
+#### Frontend 빌드
+```bash
+cd frontend
+npm run build
+npm start
+```
+
+#### Backend 프로덕션 실행
+```bash
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+## 사용법
+
+### 일반 사용자
+
+1. **회원가입/로그인**
+   - 우상단 "로그인" 버튼 클릭
+   - 이메일로 회원가입 또는 로그인
+
+2. **파일 업로드**
+   - "파일 업로드" 탭에서 비디오/오디오 파일 선택
+   - 요약 비율 설정 (30%, 50%, 70%)
+   - "영상 분석 시작" 클릭
+
+3. **YouTube 처리**
+   - "YouTube URL" 탭에서 URL 입력
+   - 요약 비율 설정
+   - 비디오 다운로드 옵션 선택 (선택사항)
+
+4. **히스토리 확인**
+   - "히스토리" 탭에서 과거 작업 확인
+   - 완료된 작업의 결과 다시 보기
+
+### 관리자
+
+1. **관리자 권한 설정**
+   - Supabase 대시보드에서 사용자의 `role`을 `admin`으로 변경
+
+2. **관리자 페이지 접속**
+   - `/admin` 경로로 직접 접속
+   - 또는 프로필 드롭다운에서 "관리자 페이지" 클릭
+
+3. **기능**
+   - 전체 사용자 관리
+   - 사용자 권한 변경
+   - 전체 작업 모니터링
+   - 시스템 통계 확인
 
 ## API 엔드포인트
 
-- `POST /api/upload` - 영상 파일 업로드
+### 비디오 처리
+- `POST /api/upload` - 파일 업로드
 - `GET /api/status/{task_id}` - 처리 상태 조회
-- `GET /api/result/{task_id}` - 처리 결과 조회
+- `GET /api/result/{task_id}` - 결과 조회
 - `DELETE /api/task/{task_id}` - 작업 정리
 
-## 프로젝트 구조
+### YouTube 처리  
+- `POST /api/youtube` - YouTube URL 처리
+- `GET /api/youtube/status/{task_id}` - YouTube 처리 상태
+- `DELETE /api/youtube/task/{task_id}` - YouTube 작업 정리
 
-```
-video-summary-app/
-├── backend/
-│   ├── main.py          # FastAPI 애플리케이션
-│   ├── models.py        # Pydantic 모델
-│   ├── services.py      # 비즈니스 로직
-│   ├── requirements.txt # Python 의존성
-│   └── uploads/         # 업로드된 파일 저장 (자동 생성)
-│
-└── frontend/
-    ├── app/             # Next.js App Router
-    ├── components/      # React 컴포넌트
-    ├── lib/            # API 클라이언트
-    ├── types/          # TypeScript 타입 정의
-    └── package.json    # Node.js 의존성
-```
+## 데이터베이스 스키마
 
-## 주의사항
+### profiles 테이블
+- 사용자 프로필 정보
+- 권한 관리 (user/admin)
 
-- OpenAI API 사용량에 따라 비용이 발생할 수 있습니다
-- 대용량 파일 처리 시 시간이 오래 걸릴 수 있습니다
-- 업로드된 파일은 처리 후 자동으로 삭제됩니다
+### video_tasks 테이블
+- 사용자별 작업 이력
+- 처리 상태 및 결과 저장
+- JSON 메타데이터 지원
 
-## 대용량 파일 처리
+## 보안 기능
 
-25MB 이상의 파일은 자동으로 10분 단위로 분할되어 처리됩니다:
-- FFmpeg가 설치되어 있어야 합니다
-- 처리 시간이 길어질 수 있습니다
-- 진행 상황이 실시간으로 표시됩니다
-
-FFmpeg가 없는 경우:
-- 25MB 이하 파일만 처리 가능
-- 대용량 파일은 수동으로 분할 필요
+- **Row Level Security (RLS)**: 사용자별 데이터 접근 제어
+- **JWT 인증**: Supabase 기반 안전한 인증
+- **CORS 설정**: 안전한 API 접근
+- **입력 검증**: 파일 형식 및 크기 제한
 
 ## 문제 해결
 
-### CORS 오류
-백엔드의 `main.py`에서 CORS 설정을 확인하세요. 프론트엔드 URL이 허용 목록에 포함되어 있어야 합니다.
+### 404 에러 (YouTube 상태 조회)
+- 백엔드 서버가 포트 8000에서 실행 중인지 확인
+- CORS 설정 확인
+- 존재하지 않는 task_id 확인
 
-### OpenAI API 오류
-- API 키가 올바른지 확인하세요
-- API 사용 한도를 확인하세요
-- 네트워크 연결을 확인하세요
+### ffmpeg 관련 오류
+- ffmpeg가 설치되어 있고 PATH에 등록되어 있는지 확인
+- Windows의 경우 `C:\ffmpeg\bin\ffmpeg.exe` 경로 확인
 
-### 파일 업로드 실패
-- 지원하는 파일 형식인지 확인하세요
-- 파일 크기가 너무 크지 않은지 확인하세요
+### Supabase 연결 오류
+- 환경 변수 설정 확인
+- Supabase 프로젝트 URL 및 키 확인
+- 네트워크 연결 상태 확인
 
 ## 라이선스
 
 MIT License
+
+## 기여하기
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request

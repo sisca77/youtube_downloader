@@ -7,20 +7,31 @@ import ProcessingStatus from '@/components/ProcessingStatus';
 import SummaryRatioSelector from '@/components/SummaryRatioSelector';
 import DownloadButtons from '@/components/DownloadButtons';
 import ResultTabs from '@/components/ResultTabs';
+import UserProfile from '@/components/UserProfile';
+import AuthModal from '@/components/Auth/AuthModal';
+import TaskHistory from '@/components/TaskHistory';
+import UsageIndicator from '@/components/UsageIndicator';
 import { videoApi, youtubeApi } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
+import { supabase } from '@/lib/supabase';
 import { ProcessingStatus as ProcessingStatusType } from '@/types';
-import { FileVideo, Github, Upload, Youtube } from 'lucide-react';
+import { FileVideo, Github, Upload, Youtube, History } from 'lucide-react';
 
 export default function Home() {
+  const { user } = useAuth();
+  const { usageInfo, checkUsageLimit, incrementUsage } = useUsageTracking();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatusType | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryRatio, setSummaryRatio] = useState(0.5);
-  const [activeTab, setActiveTab] = useState<'file' | 'youtube'>('file');
+  const [activeTab, setActiveTab] = useState<'file' | 'youtube' | 'history'>('file');
   const [isYouTubeProcessing, setIsYouTubeProcessing] = useState(false);
   const [isYouTubeTask, setIsYouTubeTask] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
 
   // 상태 폴링
   useEffect(() => {
@@ -34,6 +45,16 @@ export default function Home() {
           ? await youtubeApi.getYouTubeStatus(taskId)
           : await videoApi.getStatus(taskId);
         setProcessingStatus(status);
+
+        // 데이터베이스 업데이트
+        await updateTaskInDatabase(taskId, {
+          status: status.status,
+          progress: status.progress,
+          transcript: status.transcript,
+          outline: status.outline,
+          detailed_explanation: status.detailed_explanation,
+          metadata: status.metadata,
+        });
 
         if (status.status === 'completed' || status.status === 'failed') {
           clearInterval(interval);
@@ -51,8 +72,109 @@ export default function Home() {
     setError(null);
   }, []);
 
+  const saveTaskToDatabase = async (taskData: any, isYouTube: boolean = false) => {
+    if (!user) return;
+
+    const taskRecord = {
+      id: taskData.task_id,
+      user_id: user.id,
+      task_id: taskData.task_id,
+      file_name: isYouTube ? null : selectedFile?.name || null,
+      youtube_url: isYouTube ? taskData.youtube_url : null,
+      status: 'processing' as const,
+      progress: 0,
+      transcript: null,
+      outline: null,
+      detailed_explanation: null,
+      metadata: taskData.metadata || null,
+      summary_ratio: summaryRatio,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await supabase
+        .from('video_tasks')
+        .insert(taskRecord);
+
+      if (error) {
+        console.warn('Could not save task to database:', error);
+        // 데이터베이스 저장 실패시 로컬 스토리지에 저장
+        saveTaskToLocalStorage(taskRecord);
+      }
+    } catch (error) {
+      console.warn('Database save error:', error);
+      // 데이터베이스 오류시 로컬 스토리지에 저장
+      saveTaskToLocalStorage(taskRecord);
+    }
+  };
+
+  const saveTaskToLocalStorage = (taskRecord: any) => {
+    try {
+      const stored = localStorage.getItem(`tasks_${user?.id}`) || '[]';
+      const tasks = JSON.parse(stored);
+      tasks.unshift(taskRecord);
+      // 최대 20개까지만 저장
+      const limitedTasks = tasks.slice(0, 20);
+      localStorage.setItem(`tasks_${user?.id}`, JSON.stringify(limitedTasks));
+    } catch (error) {
+      console.warn('Error saving to localStorage:', error);
+    }
+  };
+
+  const updateTaskInDatabase = async (taskId: string, updates: any) => {
+    if (!user) return;
+
+    const updateData = {
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await supabase
+        .from('video_tasks')
+        .update(updateData)
+        .eq('task_id', taskId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.warn('Could not update task in database:', error);
+        // 데이터베이스 업데이트 실패시 로컬 스토리지 업데이트
+        updateTaskInLocalStorage(taskId, updateData);
+      }
+    } catch (error) {
+      console.warn('Database update error:', error);
+      // 데이터베이스 오류시 로컬 스토리지 업데이트
+      updateTaskInLocalStorage(taskId, updateData);
+    }
+  };
+
+  const updateTaskInLocalStorage = (taskId: string, updates: any) => {
+    try {
+      const stored = localStorage.getItem(`tasks_${user?.id}`) || '[]';
+      const tasks = JSON.parse(stored);
+      const updatedTasks = tasks.map((task: any) => 
+        task.task_id === taskId ? { ...task, ...updates } : task
+      );
+      localStorage.setItem(`tasks_${user?.id}`, JSON.stringify(updatedTasks));
+    } catch (error) {
+      console.warn('Error updating localStorage:', error);
+    }
+  };
+
   const handleUpload = useCallback(async () => {
     if (!selectedFile) return;
+
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    // 사용량 한도 확인
+    if (!checkUsageLimit()) {
+      setError('이번 달 사용 한도를 초과했습니다. 플랜을 업그레이드하거나 다음 달을 기다려주세요.');
+      return;
+    }
 
     setIsUploading(true);
     setError(null);
@@ -60,6 +182,12 @@ export default function Home() {
     try {
       const response = await videoApi.uploadVideo(selectedFile, summaryRatio);
       setTaskId(response.task_id);
+      
+      // 사용량 증가
+      await incrementUsage();
+      
+      // 데이터베이스에 작업 저장
+      await saveTaskToDatabase(response, false);
       
       // 초기 상태 설정
       setProcessingStatus({
@@ -74,9 +202,20 @@ export default function Home() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, summaryRatio]);
+  }, [selectedFile, summaryRatio, user, checkUsageLimit, incrementUsage]);
 
   const handleYouTubeSubmit = useCallback(async (youtubeUrl: string, downloadVideo: boolean) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    // 사용량 한도 확인
+    if (!checkUsageLimit()) {
+      setError('이번 달 사용 한도를 초과했습니다. 플랜을 업그레이드하거나 다음 달을 기다려주세요.');
+      return;
+    }
+
     setIsYouTubeProcessing(true);
     setError(null);
 
@@ -84,6 +223,12 @@ export default function Home() {
       const response = await youtubeApi.processYouTubeUrl(youtubeUrl, summaryRatio, downloadVideo);
       setTaskId(response.task_id);
       setIsYouTubeTask(true);
+      
+      // 사용량 증가
+      await incrementUsage();
+      
+      // 데이터베이스에 작업 저장
+      await saveTaskToDatabase({ ...response, youtube_url: youtubeUrl }, true);
       
       // 초기 상태 설정
       setProcessingStatus({
@@ -98,7 +243,7 @@ export default function Home() {
     } finally {
       setIsYouTubeProcessing(false);
     }
-  }, [summaryRatio]);
+  }, [summaryRatio, user, checkUsageLimit, incrementUsage]);
 
   const handleReset = useCallback(async () => {
     if (taskId) {
@@ -134,14 +279,17 @@ export default function Home() {
               <FileVideo className="w-8 h-8 text-blue-600" />
               <h1 className="text-2xl font-bold text-gray-900">영상 요약 서비스</h1>
             </div>
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              <Github className="w-6 h-6" />
-            </a>
+            <div className="flex items-center space-x-4">
+              <UserProfile onAuthModalOpen={() => setAuthModalOpen(true)} />
+              <a
+                href="https://github.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <Github className="w-6 h-6" />
+              </a>
+            </div>
           </div>
         </div>
       </header>
@@ -192,16 +340,36 @@ export default function Home() {
                     <Youtube className="w-4 h-4" />
                     <span>YouTube URL</span>
                   </button>
+                  {user && (
+                    <button
+                      onClick={() => setActiveTab('history')}
+                      className={`
+                        flex-1 flex items-center justify-center space-x-2 px-6 py-4 text-sm font-medium rounded-t-lg transition-colors
+                        ${activeTab === 'history'
+                          ? 'text-green-600 bg-green-50 border-b-2 border-green-600'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                        }
+                      `}
+                    >
+                      <History className="w-4 h-4" />
+                      <span>히스토리</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-6">
                   {activeTab === 'file' ? (
                     <FileUpload onFileSelect={handleFileSelect} isUploading={isUploading} />
-                  ) : (
+                  ) : activeTab === 'youtube' ? (
                     <YouTubeInput onSubmit={handleYouTubeSubmit} isProcessing={isYouTubeProcessing} />
+                  ) : (
+                    <TaskHistory />
                   )}
                 </div>
               </div>
+
+              {/* Usage Indicator */}
+              {user && <UsageIndicator />}
               
               {/* Selected File Info and Upload */}
               {activeTab === 'file' && selectedFile && !error && (
@@ -257,6 +425,16 @@ export default function Home() {
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <p className="text-sm text-red-700">{error}</p>
+                  {error.includes('사용 한도') && (
+                    <div className="mt-2">
+                      <a
+                        href="/pricing"
+                        className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                      >
+                        플랜 업그레이드하기 →
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -319,25 +497,47 @@ export default function Home() {
                     }
                   />
                   
-                  <div className="flex justify-center mt-4">
+                  <div className="flex justify-center gap-4 mt-4">
                     <button
                       onClick={handleReset}
                       className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
-                      새로운 {isYouTubeTask ? 'YouTube 영상' : '영상'} 분석
+                      메인으로 돌아가기
                     </button>
+                    {user && (
+                      <button
+                        onClick={() => {
+                          handleReset();
+                          setActiveTab('history');
+                        }}
+                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        히스토리 보기
+                      </button>
+                    )}
                   </div>
                 </>
               )}
               
               {processingStatus.status === 'failed' && (
-                <div className="flex justify-center">
+                <div className="flex justify-center gap-4">
                   <button
                     onClick={handleReset}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    새로운 영상 업로드
+                    메인으로 돌아가기
                   </button>
+                  {user && (
+                    <button
+                      onClick={() => {
+                        handleReset();
+                        setActiveTab('history');
+                      }}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      히스토리 보기
+                    </button>
+                  )}
                 </div>
               )}
             </>
@@ -353,6 +553,13 @@ export default function Home() {
           </p>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authModalMode}
+      />
     </div>
   );
 }
